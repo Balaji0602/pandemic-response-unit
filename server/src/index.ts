@@ -46,7 +46,7 @@ const initDb = async () => {
   } catch (err) {
     console.error('Database initialization failed:', err);
   } finally {
-    if (client) await client.end();
+    if (client) client.release();
   }
 };
 

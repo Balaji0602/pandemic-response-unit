@@ -1,12 +1,15 @@
-import { Client } from 'pg';
+import { Pool } from 'pg';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    max: 20,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 2000,
+});
+
 export const getDbClient = async () => {
-    const client = new Client({
-        connectionString: process.env.DATABASE_URL,
-    });
-    await client.connect();
-    return client;
+    return await pool.connect();
 };

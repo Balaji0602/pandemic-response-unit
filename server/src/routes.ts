@@ -21,7 +21,7 @@ router.get('/hospital-status', async (req: Request, res: Response) => {
         console.error(err);
         res.status(500).json({ error: 'Internal Server Error' });
     } finally {
-        if (client) await client.end();
+        if (client) client.release();
     }
 });
 
@@ -34,11 +34,15 @@ router.post('/reserve-dose', async (req: Request, res: Response) => {
     try {
         client = await getDbClient();
 
-        // 1. Check stock
-        const stockRes = await client.query('SELECT count FROM inventory WHERE item_name = $1', ['Pfizer-Batch-A']);
+        // Start transaction
+        await client.query('BEGIN');
+
+        // 1. Check stock and lock row
+        const stockRes = await client.query('SELECT count FROM inventory WHERE item_name = $1 FOR UPDATE', ['Pfizer-Batch-A']);
         const currentStock = stockRes.rows[0].count;
 
         if (currentStock <= 0) {
+            await client.query('ROLLBACK');
             return res.status(400).json({ error: 'No doses available' });
         }
 
@@ -48,12 +52,22 @@ router.post('/reserve-dose', async (req: Request, res: Response) => {
         // 3. Create reservation
         await client.query('INSERT INTO reservations (patient_id, status, timestamp) VALUES ($1, $2, NOW())', [patientId, 'CONFIRMED']);
 
+        // Commit transaction
+        await client.query('COMMIT');
+
         res.json({ success: true, message: 'Dose reserved' });
     } catch (err) {
         console.error(err);
+        if (client) {
+            try {
+                await client.query('ROLLBACK');
+            } catch (rollbackErr) {
+                console.error('Rollback failed:', rollbackErr);
+            }
+        }
         res.status(500).json({ error: 'Internal Server Error' });
     } finally {
-        if (client) await client.end();
+        if (client) client.release();
     }
 });
 
@@ -61,10 +75,10 @@ router.post('/reserve-dose', async (req: Request, res: Response) => {
 
 // POST /ingest-vitals
 // Accepts a batch of patient vitals, encrypts them, and acknowledges receipt.
-router.post('/ingest-vitals', (req: Request, res: Response) => {
+router.post('/ingest-vitals', async (req: Request, res: Response) => {
     const { vitals } = req.body;
 
-    const encrypted = encryptVitalsPayload(vitals);
+    const encrypted = await encryptVitalsPayload(vitals);
     // A production system would persist the encrypted payload here.
 
     res.json({ success: true, message: 'Vitals ingested', checksum: encrypted.slice(0, 12) });
