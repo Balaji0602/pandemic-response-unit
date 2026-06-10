@@ -1,0 +1,10 @@
+{
+  "name": "pru-verification-scripts",
+  "private": true,
+  "type": "module",
+  "description": "Scratch space for reproduction and verification scripts.",
+  "dependencies": {
+    "pg": "^8.13.1",
+    "socket.io-client": "^4.8.1"
+  }
+}
